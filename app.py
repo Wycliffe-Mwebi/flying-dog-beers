@@ -1,63 +1,95 @@
+import os
 import dash
-import dash_core_components as dcc
 import dash_html_components as html
-import plotly.graph_objs as go
+import dash_core_components as dcc
+import plotly.graph_objects as go
+import pandas as pd
+from dash.dependencies import Input, Output
+from dash import dcc
 
-########### Define your variables
-beers=['Chesapeake Stout', 'Snake Dog IPA', 'Imperial Porter', 'Double Dog IPA']
-ibu_values=[35, 60, 85, 75]
-abv_values=[5.4, 7.1, 9.2, 4.3]
-color1='darkred'
-color2='orange'
-mytitle='Beer Comparison'
-tabtitle='beer!'
-myheading='Flying Dog Beers'
-label1='IBU'
-label2='ABV'
-githublink='https://github.com/austinlasseter/flying-dog-beers'
-sourceurl='https://www.flyingdog.com/beers/'
+# Load data
+df = pd.read_csv('stock_data.csv', index_col=0, parse_dates=True)
 
-########### Set up the chart
-bitterness = go.Bar(
-    x=beers,
-    y=ibu_values,
-    name=label1,
-    marker={'color':color1}
-)
-alcohol = go.Bar(
-    x=beers,
-    y=abv_values,
-    name=label2,
-    marker={'color':color2}
-)
+df.index = pd.to_datetime(df['Date'],dayfirst=True)
 
-beer_data = [bitterness, alcohol]
-beer_layout = go.Layout(
-    barmode='group',
-    title = mytitle
-)
+# Initialize the app
+app = dash.Dash(__name__)
+app.config.suppress_callback_exceptions = True
 
-beer_fig = go.Figure(data=beer_data, layout=beer_layout)
-
-
-########### Initiate the app
-external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
-app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 server = app.server
-app.title=tabtitle
 
-########### Set up the layout
-app.layout = html.Div(children=[
-    html.H1(myheading),
-    dcc.Graph(
-        id='flyingdog',
-        figure=beer_fig
-    ),
-    html.A('Code on Github', href=githublink),
-    html.Br(),
-    html.A('Data Source', href=sourceurl),
-    ]
+
+def get_options(list_stocks):
+    dict_list = []
+    for i in list_stocks:
+        dict_list.append({'label': i, 'value': i})
+
+    return dict_list
+
+
+app.layout = html.Div(
+    children=[
+        html.Div(className='row',
+                 children=[
+                    html.Div(className='four columns div-user-controls',
+                             children=[
+                                 html.H2('STOCK PRICES'),
+                                 html.P('Visualising Stock Prices over time.'),
+                                 html.P('Pick one or more stocks from the dropdown below.'),
+                                 html.Div(
+                                     className='div-for-dropdown',
+                                     children=[
+                                         dcc.Dropdown(id='stockselector', options=get_options(df['stock'].unique()),
+                                                      multi=True, value=[df['stock'].sort_values()[0]],
+                                                      style={'backgroundColor': '#1E1E1E'},
+                                                      className='stockselector'
+                                                      ),
+                                     ],
+                                     style={'color': '#1E1E1E'})
+                                ]
+                             ),
+                    html.Div(className='eight columns div-for-charts bg-grey',
+                             children=[
+                                 dcc.Graph(id='timeseries', config={'displayModeBar': False}, animate=True)
+                             ])
+                              ])
+        ]
+
 )
+
+
+# Callback for timeseries price
+@app.callback(Output('timeseries', 'figure'),
+              [Input('stockselector', 'value')])
+def update_graph(selected_dropdown_value):
+    trace1 = []
+    df_sub = df
+    for stock in selected_dropdown_value:
+        trace1.append(go.Scatter(x=df_sub[df_sub['stock'] == stock].index,
+                                 y=df_sub[df_sub['stock'] == stock]['value'],
+                                 mode='lines',
+                                 opacity=0.7,
+                                 name=stock,
+                                 textposition='bottom center'))
+    traces = [trace1]
+    data = [val for sublist in traces for val in sublist]
+    figure = {'data': data,
+              'layout': go.Layout(
+                  colorway=["#5E0DAC", '#FF4F00', '#375CB1', '#FF7400', '#FFF400', '#FF0056'],
+                  template='plotly_dark',
+                  paper_bgcolor='rgba(0, 0, 0, 0)',
+                  plot_bgcolor='rgba(0, 0, 0, 0)',
+                  margin={'b': 15},
+                  hovermode='x',
+                  autosize=True,
+                  title={'text': 'Stock Prices -Visualization by Wycliffe Mwebi', 'font': {'color': 'white'}, 'x': 0.5},
+                  xaxis={'range': [df_sub.index.min(), df_sub.index.max()]},
+              ),
+
+              }
+
+    return figure
+
 
 if __name__ == '__main__':
-    app.run_server()
+    app.run_server(debug=True, use_reloader=False,)
